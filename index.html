@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Moon - Moon Empire</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   body{margin:0;background:linear-gradient(135deg,#0a0a1a,#1a1a3a,#0a0a1a);color:#fff;font-family:Arial;min-height:100vh}
   .header{text-align:center;padding:15px 0 5px}
@@ -27,11 +28,10 @@
 <body>
 <div class="header"><h1>🌙 MOON</h1><p>MOON EMPIRE • EARN • SPIN • REFER</p></div>
 
-<!-- HOME -->
 <div id="home" class="page active">
   <div class="card">
     <div style="text-align:center;font-size:12px;letter-spacing:2px;color:#aaa">MOON BALANCE</div>
-    <div id="gshBal" class="balance">0 MOON</div>
+    <div id="gshBal" class="balance">Loading...</div>
     <div style="text-align:center;font-size:12px;margin-top:6px">GRAM: <span id="gramBal">0</span> | VANTA: <span id="vantaBal">0</span> | ATF: <span id="atfBal">0</span></div>
   </div>
   <div class="card">
@@ -44,23 +44,18 @@
     <button class="gold-btn" onclick="buyItem(100, 'atf', 30)">100 MOON → 30 ATF</button>
     <button class="gold-btn" onclick="buyItem(100, 'gram', 0.0001)">100 MOON → 0.0001 GRAM</button>
   </div>
-
-  <!-- WITHDRAW - NEW -->
   <div class="card">
     <h3>💸 Withdraw</h3>
     <p class="small" style="text-align:left;line-height:1.6">Minimum Withdrawal:<br>• GRAM: 0.1 GRAM - Once per 24 hours<br>• VANTA: 50 VANTA - Once per 24 hours<br>• ATF: 65 ATF - Once per 24 hours</p>
     <select id="withdrawType" onchange="updateWithdrawInfo()">
-      <option value="gram">GRAM</option>
-      <option value="vanta">VANTA</option>
-      <option value="atf">ATF</option>
+      <option value="gram">GRAM</option><option value="vanta">VANTA</option><option value="atf">ATF</option>
     </select>
-    <div id="withdrawInfo" class="small" style="text-align:left;margin:5px 0">Your GRAM Balance: 0 | Min: 0.1</div>
+    <div id="withdrawInfo" class="small" style="text-align:left;margin:5px 0">Loading...</div>
     <input id="withdrawAmount" type="number" step="any" placeholder="Enter amount to withdraw">
     <input id="withdrawWallet" placeholder="Enter your TON wallet (UQ...)">
     <button class="gold-btn" onclick="withdraw()" style="background:#fff">💸 Withdraw Now</button>
     <div id="withdrawTimer" class="small" style="margin-top:6px"></div>
   </div>
-
   <div class="card" style="text-align:center">
     <h3>💸 Payout Channel</h3>
     <p class="small">All payout proofs are published here</p>
@@ -68,9 +63,8 @@
   </div>
 </div>
 
-<!-- TASKS -->
 <div id="tasks" class="page">
-  <div class="card"><h3>📋 Earn Tasks - 10 MOON each</h3><div id="taskList"></div></div>
+  <div class="card"><h3>📋 Earn Tasks - 10 MOON each</h3><div id="taskList">Loading tasks...</div><p id="taskEmpty" class="small" style="display:none">No tasks available right now. Check back later.</p></div>
   <div class="card">
     <h3>📢 Promote Your Bot / Channel</h3>
     <input id="promoName" placeholder="Bot / Channel Name">
@@ -83,7 +77,6 @@
   </div>
 </div>
 
-<!-- SPIN -->
 <div id="spin" class="page">
   <div class="card" style="text-align:center">
     <h3>🎰 Daily Spin - Free Spin</h3>
@@ -95,7 +88,6 @@
   </div>
 </div>
 
-<!-- REFERRAL -->
 <div id="referral" class="page">
   <div class="card">
     <h3>👥 Referral - Earn 50 MOON</h3>
@@ -103,7 +95,8 @@
     <input id="refLink" readonly>
     <button class="gold-btn" onclick="copyRef()">Copy Link</button>
     <p>Invited: <span id="refCount">0</span> users</p>
-    <small style="color:#aaa">One user can only use one referral link once. You earn 50 MOON per friend.</small>
+    <p class="small" id="refStatus">Share your link. You earn 50 MOON for each new user who joins with your link.</p>
+    <small style="color:#aaa">One user can only use one referral link once. Only the referrer earns the bonus.</small>
   </div>
   <div class="card">
     <h3>🏆 Top Referrers</h3>
@@ -122,118 +115,172 @@
 <audio id="spinSound" src="https://assets.mixkit.co/sfx/preview/mixkit-casino-win-notification-1986.mp3"></audio>
 
 <script>
+// ===== YOUR SUPABASE - ALREADY CONNECTED =====
+const SUPABASE_URL = "https://lsviaavezqyvucmqqnbt.supabase.co";
+const SUPABASE_KEY = "sb_publishable_G5Ow7Ky0LdU58sSILmk8ag_x8_TYUa0";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 const BOT_USERNAME = "moon_empire_bot";
 const OWNER_TON_WALLET = "UQCbXnjJ-vVo3oGtovId9TRs_H-O3CO9irjgazyk8F39_XOu";
 const PAYOUT_CHANNEL = "https://t.me/moonempirepayout";
-
-// WITHDRAW LIMITS
+const MOON_CHANNEL = "https://t.me/moonempire";
 const WITHDRAW_MIN = { gram: 0.1, vanta: 50, atf: 65 };
 
 const tg = window.Telegram.WebApp;
 tg.ready(); tg.expand();
-let data = JSON.parse(localStorage.getItem('moon_data') || '{"gsh":0,"gram":0,"vanta":0,"atf":0,"lastSpin":0,"lastDaily":0,"refs":0,"usedRef":false,"lastWithdraw":{"gram":0,"vanta":0,"atf":0}}');
-if(!data.lastWithdraw) data.lastWithdraw = {gram:0, vanta:0, atf:0};
+const MY_ID = String(tg.initDataUnsafe.user?.id || "123");
+const MY_USERNAME = tg.initDataUnsafe.user?.username || "";
 
-function save(){ localStorage.setItem('moon_data', JSON.stringify(data)); updateUI(); }
+let data = {gsh:0, gram:0, vanta:0, atf:0, lastSpin:0, lastDaily:0, refs:0, usedRef:false, lastWithdraw:{gram:0, vanta:0, atf:0}};
+
+async function loadUser(){
+  let {data: u} = await supabase.from('users').select('*').eq('telegram_id', MY_ID).single();
+  if(!u){
+    const startParam = tg.initDataUnsafe.start_param || "";
+    let referrer = null;
+    if(startParam.startsWith("ref_")){
+      referrer = startParam.replace("ref_","");
+      if(referrer === MY_ID) referrer = null;
+    }
+    await supabase.from('users').insert({telegram_id: MY_ID, username: MY_USERNAME, referrer_id: referrer, used_ref: !!referrer});
+    // OPTION A: Only referrer gets +50
+    if(referrer){
+      let {data: refUser} = await supabase.from('users').select('*').eq('telegram_id', referrer).single();
+      if(refUser){
+        await supabase.from('users').update({gsh: Number(refUser.gsh)+50, refs: (refUser.refs||0)+1}).eq('telegram_id', referrer);
+      }
+      setTimeout(()=>alert("Welcome to Moon Empire! 🌙\n\nYou joined with a referral link.\nThe person who invited you earned 50 MOON."), 1000);
+    }
+    u = {telegram_id: MY_ID, gsh:0, gram:0, vanta:0, atf:0, refs:0, used_ref: !!referrer, last_daily:0, last_spin:0, last_withdraw_gram:0, last_withdraw_vanta:0, last_withdraw_atf:0};
+  }
+  data = {gsh: Number(u.gsh||0), gram: Number(u.gram||0), vanta: Number(u.vanta||0), atf: Number(u.atf||0), lastDaily: Number(u.last_daily||0), lastSpin: Number(u.last_spin||0), refs: u.refs||0, usedRef: !!u.used_ref, lastWithdraw:{gram: Number(u.last_withdraw_gram||0), vanta: Number(u.last_withdraw_vanta||0), atf: Number(u.last_withdraw_atf||0)}};
+  updateUI(); loadTasks();
+}
+
+async function save(){
+  await supabase.from('users').update({
+    gsh: data.gsh, gram: data.gram, vanta: data.vanta, atf: data.atf,
+    last_daily: data.lastDaily, last_spin: data.lastSpin,
+    last_withdraw_gram: data.lastWithdraw.gram,
+    last_withdraw_vanta: data.lastWithdraw.vanta,
+    last_withdraw_atf: data.lastWithdraw.atf,
+    refs: data.refs, used_ref: data.usedRef
+  }).eq('telegram_id', MY_ID);
+  updateUI();
+}
+
 function updateUI(){
   document.getElementById('gshBal').innerText = data.gsh + " MOON";
   document.getElementById('gramBal').innerText = data.gram;
   document.getElementById('vantaBal').innerText = data.vanta;
   document.getElementById('atfBal').innerText = data.atf;
   document.getElementById('refCount').innerText = data.refs;
-  const uid = tg.initDataUnsafe.user?.id || "123";
-  document.getElementById('refLink').value = "https://t.me/" + BOT_USERNAME + "?start=ref_" + uid;
-  const lastDaily = data.lastDaily || 0;
-  const diff = Date.now() - lastDaily;
+  document.getElementById('refLink').value = "https://t.me/" + BOT_USERNAME + "?start=ref_" + MY_ID;
+  const refStatus = document.getElementById('refStatus');
+  if(refStatus){
+    if(data.usedRef){ refStatus.innerText = "You joined with a referral link. The person who invited you earned 50 MOON."; }
+    else { refStatus.innerText = "Share your link. You earn 50 MOON for each new user who joins with your link."; }
+  }
+  const diff = Date.now() - (data.lastDaily||0);
   const dailyEl = document.getElementById('dailyTimer');
-  if(dailyEl){ if(diff < 86400000 && lastDaily!==0){ const h = Math.floor((86400000-diff)/3600000); dailyEl.innerText = "Next daily reward in "+h+"h"; } else { dailyEl.innerText = "Daily reward is ready"; } }
+  if(dailyEl){ if(diff < 86400000 && data.lastDaily!==0){ const h = Math.floor((86400000-diff)/3600000); dailyEl.innerText = "Next daily reward in "+h+"h"; } else { dailyEl.innerText = "Daily reward is ready"; } }
   const spinEl = document.getElementById('spinTimer');
   if(spinEl){ const sdiff = Date.now() - (data.lastSpin||0); if(sdiff < 86400000 && data.lastSpin!==0){ const h=Math.floor((86400000-sdiff)/3600000); spinEl.innerText="Next spin in "+h+"h"; } else { spinEl.innerText="Spin is ready"; } }
   updateWithdrawInfo();
 }
 function playSound(t){ try{ document.getElementById(t+'Sound')?.play().catch(()=>{}); }catch(e){} }
-function showPage(p, btn){ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active')); document.getElementById(p).classList.add('active'); document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active')); if(btn) btn.classList.add('active'); }
-
-function claimDaily(){
+function showPage(p, btn){ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active')); document.getElementById(p).classList.add('active'); document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active')); if(btn) btn.classList.add('active'); if(p==='tasks') loadTasks(); }
+async function claimDaily(){
   const now = Date.now();
   if(now - (data.lastDaily||0) < 86400000 && data.lastDaily!==0){ alert("Daily reward already claimed. Please come back tomorrow."); return; }
-  data.gsh += 20; data.lastDaily = now; playSound('coin'); save(); alert("+20 MOON Daily Reward! 🌙");
+  data.gsh += 20; data.lastDaily = now; playSound('coin'); await save(); alert("+20 MOON Daily Reward! 🌙");
 }
 
-// TASKS
-const defaultTasks = [
-  {name:"Join Moon Payout Channel", link:"https://t.me/moonempirepayout", reward:10}
-];
-function getUniquePromos(){
-  let custom = JSON.parse(localStorage.getItem('moon_custom_promos')||"[]");
-  let seen = new Set();
-  let unique = [];
-  custom.forEach(c=>{
-    let key = (c.name||"").toLowerCase().trim() + "|" + (c.link||"").toLowerCase().trim();
-    if(!seen.has(key)){ seen.add(key); unique.push(c); }
-  });
-  return unique;
-}
-function loadTasks(){
+// ===== TASKS + PROMO - LIVE COUNTING =====
+async function loadTasks(){
   const list = document.getElementById('taskList');
-  list.innerHTML = "";
-  let allTasks = [...defaultTasks];
-  let custom = getUniquePromos();
-  localStorage.setItem('moon_custom_promos', JSON.stringify(custom));
-  custom.forEach((c)=>{
-    allTasks.push({name:"Join / Open: "+c.name, link:c.link, reward:10});
+  if(!list) return;
+  let {data: promos} = await supabase.from('promos').select('*').order('created_at',{ascending:false});
+  let {data: myDone} = await supabase.from('tasks_done').select('task_name').eq('user_id', MY_ID);
+  let doneNames = (myDone||[]).map(d=>d.task_name);
+  let {data: myPromoDone} = await supabase.from('promo_done').select('promo_id').eq('user_id', MY_ID);
+  let myPromoIds = (myPromoDone||[]).map(d=>d.promo_id);
+  let html = "";
+  const defaultTasks = [
+    {name:"Join Moon Empire Channel", link: MOON_CHANNEL},
+    {name:"Join Moon Payout Channel", link: PAYOUT_CHANNEL}
+  ];
+  defaultTasks.forEach(t=>{
+    const done = doneNames.includes(t.name);
+    html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>${t.name}</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" ${done?'disabled':''} onclick="doTask('${t.link}',10,'${t.name}', false)">${done?'✅ Done':'10 MOON'}</button></div>`;
   });
-  allTasks.forEach(t=>{
-    const done = (JSON.parse(localStorage.getItem('moon_tasks_done')||"[]")).includes(t.name);
-    list.innerHTML += `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>${t.name}</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" ${done?'disabled':''} onclick="doTask('${t.link}',${t.reward},'${t.name}')">${done?'✅ Done':'10 MOON'}</button></div>`;
+  (promos||[]).forEach(c=>{
+    if(c.done_count >= c.max_users) return;
+    const isCreator = String(c.creator_id) === MY_ID;
+    const alreadyDone = myPromoIds.includes(c.id);
+    const remaining = c.max_users - c.done_count;
+    let btn = "";
+    if(isCreator) btn = `<button class="gold-btn" style="width:auto;padding:8px 12px;margin:0;background:#555" disabled>Your Promo (${c.done_count}/${c.max_users})</button> <button onclick="deletePromo(${c.id})" style="background:#ff4444;border:none;color:#fff;padding:5px 9px;border-radius:50%;cursor:pointer">X</button>`;
+    else if(alreadyDone) btn = `<button disabled class="gold-btn" style="width:auto;padding:8px 15px;margin:0">✅ Done</button>`;
+    else btn = `<button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${c.link}',10,'promo_${c.id}', true, ${c.id})">10 MOON</button>`;
+    html += `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><span>Join / Open: ${c.name}</span><div>${btn}</div></div><div class="small" style="text-align:left;margin-top:6px">${c.done_count} / ${c.max_users} users • ${remaining} slots left</div></div>`;
   });
+  list.innerHTML = html;
+  const empty = document.getElementById('taskEmpty');
+  if(empty) empty.style.display = "none";
 }
-function doTask(link, reward, name){
+async function deletePromo(id){
+  if(!confirm("Delete this promo?")) return;
+  await supabase.from('promos').delete().eq('id', id).eq('creator_id', MY_ID);
+  loadTasks();
+}
+async function doTask(link, reward, name, isPromo, promoId){
+  if(isPromo){
+    let {data: p} = await supabase.from('promos').select('*').eq('id', promoId).single();
+    if(!p) return;
+    if(String(p.creator_id) === MY_ID){ alert("You cannot complete your own promotion."); return; }
+    if(p.done_count >= p.max_users){ alert("This promotion is finished."); loadTasks(); return; }
+  }
   window.open(link, "_blank");
-  setTimeout(()=>{
-    let done = JSON.parse(localStorage.getItem('moon_tasks_done')||"[]");
-    if(done.includes(name)) return;
-    done.push(name); localStorage.setItem('moon_tasks_done', JSON.stringify(done));
-    data.gsh += reward; save(); loadTasks(); alert("+"+reward+" MOON!");
+  setTimeout(async ()=>{
+    if(isPromo){
+      let {data: exists} = await supabase.from('promo_done').select('*').eq('promo_id', promoId).eq('user_id', MY_ID).single();
+      if(exists){ alert("You already did this task."); return; }
+      await supabase.from('promo_done').insert({promo_id: promoId, user_id: MY_ID});
+      let {data: p} = await supabase.from('promos').select('*').eq('id', promoId).single();
+      await supabase.from('promos').update({done_count: p.done_count + 1}).eq('id', promoId);
+      if(p.done_count + 1 >= p.max_users) alert("This promotion is now completed.");
+    } else {
+      let {data: exists} = await supabase.from('tasks_done').select('*').eq('user_id', MY_ID).eq('task_name', name).single();
+      if(exists) return;
+      await supabase.from('tasks_done').insert({user_id: MY_ID, task_name: name});
+    }
+    data.gsh += reward; await save(); loadTasks(); alert("+"+reward+" MOON!");
   }, 3000);
 }
-
-// PROMOTE - WALLET OPENS VIA TONKEEPER LINK
 document.getElementById('promoType').onchange = calcPrice;
 document.getElementById('promoUsers').onchange = calcPrice;
 function calcPrice(){
-  const type = document.getElementById('promoType').value;
-  const users = parseInt(document.getElementById('promoUsers').value);
-  let price = 0;
+  const type = document.getElementById('promoType').value; const users = parseInt(document.getElementById('promoUsers').value); let price = 0;
   if(type === 'bot'){ price = users/100 * 0.2; } else { price = users/100 * 0.4; }
-  document.getElementById('promoPrice').innerText = "Price: "+price+" GRAM for "+users+" users";
-  return price;
+  document.getElementById('promoPrice').innerText = "Price: "+price+" GRAM for "+users+" users"; return price;
 }
-function createPromo(){
+async function createPromo(){
   const price = calcPrice();
   const name = document.getElementById('promoName').value.trim();
   const link = document.getElementById('promoLink').value.trim();
   const type = document.getElementById('promoType').value;
-  const users = document.getElementById('promoUsers').value;
-  if(!name || !link){ alert("Please fill in the name and link first."); return; }
-  let custom = getUniquePromos();
-  let exists = custom.some(c=> c.name.toLowerCase().trim() === name.toLowerCase() || c.link.toLowerCase().trim() === link.toLowerCase());
-  if(exists){ alert("This promotion already exists."); return; }
-  custom.push({name, link, type, users, price, date: Date.now()});
-  localStorage.setItem('moon_custom_promos', JSON.stringify(custom));
+  const users = parseInt(document.getElementById('promoUsers').value);
+  if(!name || !link){ alert("Please fill in name and link."); return; }
+  await supabase.from('promos').insert({creator_id: MY_ID, name, link, type, max_users: users, done_count: 0, price});
   loadTasks();
   const amountNano = Math.floor(price * 1000000000);
   const text = encodeURIComponent(`MOON PROMO ${users} users - ${name}`);
   const tonLink = `https://app.tonkeeper.com/transfer/${OWNER_TON_WALLET}?amount=${amountNano}&text=${text}`;
-  if(window.Telegram && window.Telegram.WebApp){ window.Telegram.WebApp.openLink(tonLink, {try_instant_view: false}); } else { window.open(tonLink, "_blank"); }
-  setTimeout(()=>{
-    alert(`Promotion Created\n\nYour wallet has opened. Please confirm the payment of ${price} GRAM to complete your promotion.\n\nYour task is now visible to users in the Tasks section.`);
-    document.getElementById('promoName').value = "";
-    document.getElementById('promoLink').value = "";
-  }, 800);
+  window.Telegram.WebApp.openLink(tonLink, {try_instant_view: false});
+  alert(`Promotion Created! Pay ${price} GRAM. It will disappear automatically after ${users} users.`);
+  document.getElementById('promoName').value = ""; document.getElementById('promoLink').value = "";
 }
-
-// SPIN
 const spinPrizes = [
   { label: "1 VANTA", value: 1, type: "vanta", weight: 300 },
   { label: "1 ATF", value: 1, type: "atf", weight: 250 },
@@ -245,88 +292,41 @@ const spinPrizes = [
 ];
 document.getElementById('spinBtn').onclick = () => {
   if(Date.now() - (data.lastSpin||0) < 86400000 && data.lastSpin!==0){ alert("You can spin once per day."); return; }
-  const btn = document.getElementById('spinBtn');
-  btn.disabled = true; btn.innerText = "Spinning...";
-  playSound('spin');
-  const wheel = document.getElementById('wheel');
-  wheel.style.transform = "rotate("+(720+Math.random()*720)+"deg)";
-  setTimeout(()=>{
-    let total = spinPrizes.reduce((s,p)=>s+p.weight,0);
-    let rand = Math.random()*total;
-    let picked = spinPrizes[0];
-    for(let p of spinPrizes){ if(rand < p.weight){ picked = p; break; } rand -= p.weight; }
-    if((picked.label === "10 VANTA" || picked.label === "3 ATF") && Math.random() < 0.95){ picked = spinPrizes[0]; }
-    data[picked.type] = Math.round((data[picked.type] + picked.value)*100000)/100000;
-    data.lastSpin = Date.now(); save();
-    document.getElementById('spinResult').innerText = "You won: "+picked.label;
-    btn.disabled = false; btn.innerText = "🎯 Spin Now (1 per day)";
-  }, 3000);
+  const btn = document.getElementById('spinBtn'); btn.disabled = true; btn.innerText = "Spinning..."; playSound('spin');
+  const wheel = document.getElementById('wheel'); wheel.style.transform = "rotate("+(720+Math.random()*720)+"deg)";
+  setTimeout(async ()=>{ let total = spinPrizes.reduce((s,p)=>s+p.weight,0); let rand = Math.random()*total; let picked = spinPrizes[0]; for(let p of spinPrizes){ if(rand < p.weight){ picked = p; break; } rand -= p.weight; } if((picked.label === "10 VANTA" || picked.label === "3 ATF") && Math.random() < 0.95){ picked = spinPrizes[0]; } data[picked.type] = Math.round((data[picked.type] + picked.value)*100000)/100000; data.lastSpin = Date.now(); await save(); document.getElementById('spinResult').innerText = "You won: "+picked.label; btn.disabled = false; btn.innerText = "🎯 Spin Now (1 per day)"; }, 3000);
 };
-
-function buyItem(cost, type, amount){
+async function buyItem(cost, type, amount){
   if(data.gsh < cost){ alert("You need "+cost+" MOON. You currently have "+data.gsh); return; }
-  data.gsh -= cost; data[type] = Math.round((data[type]+amount)*100000)/100000; playSound('coin'); save(); alert("You purchased "+amount+" "+type.toUpperCase()+" ✅");
+  data.gsh -= cost; data[type] = Math.round((data[type]+amount)*100000)/100000; playSound('coin'); await save(); alert("You purchased "+amount+" "+type.toUpperCase()+" ✅");
 }
-
-// WITHDRAW - SEPARATE 24H PER COIN, USER TYPES AMOUNT
 function updateWithdrawInfo(){
-  const type = document.getElementById('withdrawType')?.value || 'gram';
-  const bal = data[type] || 0;
-  const min = WITHDRAW_MIN[type];
-  const last = data.lastWithdraw[type] || 0;
-  const diff = Date.now() - last;
-  const infoEl = document.getElementById('withdrawInfo');
-  const timerEl = document.getElementById('withdrawTimer');
+  const type = document.getElementById('withdrawType')?.value || 'gram'; const bal = data[type] || 0; const min = WITHDRAW_MIN[type]; const last = data.lastWithdraw[type] || 0; const diff = Date.now() - last;
+  const infoEl = document.getElementById('withdrawInfo'); const timerEl = document.getElementById('withdrawTimer');
   if(infoEl) infoEl.innerText = `Your ${type.toUpperCase()} Balance: ${bal} | Min: ${min}`;
-  if(timerEl){
-    if(last !== 0 && diff < 86400000){
-      const h = Math.floor((86400000-diff)/3600000);
-      const m = Math.floor(((86400000-diff)%3600000)/60000);
-      timerEl.innerText = `Next ${type.toUpperCase()} withdrawal in ${h}h ${m}m`;
-    } else {
-      timerEl.innerText = `${type.toUpperCase()} withdrawal is available`;
-    }
-  }
+  if(timerEl){ if(last !== 0 && diff < 86400000){ const h = Math.floor((86400000-diff)/3600000); const m = Math.floor(((86400000-diff)%3600000)/60000); timerEl.innerText = `Next ${type.toUpperCase()} withdrawal in ${h}h ${m}m`; } else { timerEl.innerText = `${type.toUpperCase()} withdrawal is available`; } }
 }
-function withdraw(){
+async function withdraw(){
   const type = document.getElementById('withdrawType').value;
   const amount = parseFloat(document.getElementById('withdrawAmount').value);
   const wallet = document.getElementById('withdrawWallet').value.trim();
-  const min = WITHDRAW_MIN[type];
-  const bal = data[type] || 0;
-
-  if(!wallet || !wallet.startsWith("UQ")){ alert("Please enter a valid TON wallet address (UQ...)."); return; }
-  if(!amount || isNaN(amount) || amount <= 0){ alert("Please enter the amount you want to withdraw."); return; }
-  if(amount < min){ alert(`Minimum withdrawal for ${type.toUpperCase()} is ${min}.`); return; }
-  if(amount > bal){ alert(`Insufficient balance. You have ${bal} ${type.toUpperCase()}.`); return; }
-
-  // Once per 24 hours - per coin
-  const last = data.lastWithdraw[type] || 0;
-  const diff = Date.now() - last;
-  if(last !== 0 && diff < 86400000){
-    const h = Math.floor((86400000-diff)/3600000);
-    const m = Math.floor(((86400000-diff)%3600000)/60000);
-    alert(`You have already withdrawn ${type.toUpperCase()} in the last 24 hours.\nPlease wait ${h}h ${m}m before withdrawing ${type.toUpperCase()} again.`);
-    return;
-  }
-
-  // Success - deduct balance, save time
-  data[type] = Math.round((bal - amount)*100000)/100000;
+  const min = WITHDRAW_MIN[type]; const bal = data[type]||0;
+  if(!wallet || !wallet.startsWith("UQ")){ alert("Enter valid TON wallet."); return; }
+  if(!amount || amount < min){ alert(`Minimum is ${min}`); return; }
+  if(amount > bal){ alert(`You have ${bal}`); return; }
+  const last = data.lastWithdraw[type]||0;
+  if(last!==0 && Date.now()-last < 86400000){ alert("You already withdrew this coin in last 24h."); return; }
+  data[type] = Math.round((bal-amount)*100000)/100000;
   data.lastWithdraw[type] = Date.now();
-  save();
+  await save();
+  await supabase.from('withdraws').insert({user_id: MY_ID, coin: type, amount, wallet, status: 'pending'});
   document.getElementById('withdrawAmount').value = "";
-  alert(`Withdrawal request received: ${amount} ${type.toUpperCase()} to ${wallet}.\nIt will be processed within 24 hours after verification.\nCheck payouts: https://t.me/moonempirepayout`);
+  alert(`Withdrawal request sent: ${amount} ${type.toUpperCase()} to ${wallet}. Check payout channel.`);
 }
-
 function copyRef(){ navigator.clipboard.writeText(document.getElementById('refLink').value).then(()=>alert("Link copied. Share it and earn 50 MOON per friend 🌙")); }
 
-const startParam = tg.initDataUnsafe.start_param || "";
-if(startParam.startsWith("ref_") && !data.usedRef){
-  const refId = startParam.replace("ref_","");
-  const myId = String(tg.initDataUnsafe.user?.id || "");
-  if(refId !== myId){ data.gsh += 50; data.usedRef = true; save(); alert("Referral bonus: +50 MOON 🌙"); }
-}
-updateUI(); loadTasks(); calcPrice();
+loadUser();
+calcPrice();
 setInterval(updateUI, 1000);
 </script>
 </body>
