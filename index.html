@@ -43,8 +43,24 @@
     <button class="gold-btn" onclick="buyItem(100, 'vanta', 50)">100 MOON → 50 VANTA</button>
     <button class="gold-btn" onclick="buyItem(100, 'atf', 30)">100 MOON → 30 ATF</button>
     <button class="gold-btn" onclick="buyItem(100, 'gram', 0.0001)">100 MOON → 0.0001 GRAM</button>
-    <button class="gold-btn" onclick="withdraw()" style="background:#fff">💸 Withdraw GRAM / VANTA / ATF</button>
   </div>
+
+  <!-- WITHDRAW - NEW -->
+  <div class="card">
+    <h3>💸 Withdraw</h3>
+    <p class="small" style="text-align:left;line-height:1.6">Minimum Withdrawal:<br>• GRAM: 0.1 GRAM - Once per 24 hours<br>• VANTA: 50 VANTA - Once per 24 hours<br>• ATF: 65 ATF - Once per 24 hours</p>
+    <select id="withdrawType" onchange="updateWithdrawInfo()">
+      <option value="gram">GRAM</option>
+      <option value="vanta">VANTA</option>
+      <option value="atf">ATF</option>
+    </select>
+    <div id="withdrawInfo" class="small" style="text-align:left;margin:5px 0">Your GRAM Balance: 0 | Min: 0.1</div>
+    <input id="withdrawAmount" type="number" step="any" placeholder="Enter amount to withdraw">
+    <input id="withdrawWallet" placeholder="Enter your TON wallet (UQ...)">
+    <button class="gold-btn" onclick="withdraw()" style="background:#fff">💸 Withdraw Now</button>
+    <div id="withdrawTimer" class="small" style="margin-top:6px"></div>
+  </div>
+
   <div class="card" style="text-align:center">
     <h3>💸 Payout Channel</h3>
     <p class="small">All payout proofs are published here</p>
@@ -110,9 +126,13 @@ const BOT_USERNAME = "moon_empire_bot";
 const OWNER_TON_WALLET = "UQCbXnjJ-vVo3oGtovId9TRs_H-O3CO9irjgazyk8F39_XOu";
 const PAYOUT_CHANNEL = "https://t.me/moonempirepayout";
 
+// WITHDRAW LIMITS
+const WITHDRAW_MIN = { gram: 0.1, vanta: 50, atf: 65 };
+
 const tg = window.Telegram.WebApp;
 tg.ready(); tg.expand();
-let data = JSON.parse(localStorage.getItem('moon_data') || '{"gsh":0,"gram":0,"vanta":0,"atf":0,"lastSpin":0,"lastDaily":0,"refs":0,"usedRef":false}');
+let data = JSON.parse(localStorage.getItem('moon_data') || '{"gsh":0,"gram":0,"vanta":0,"atf":0,"lastSpin":0,"lastDaily":0,"refs":0,"usedRef":false,"lastWithdraw":{"gram":0,"vanta":0,"atf":0}}');
+if(!data.lastWithdraw) data.lastWithdraw = {gram:0, vanta:0, atf:0};
 
 function save(){ localStorage.setItem('moon_data', JSON.stringify(data)); updateUI(); }
 function updateUI(){
@@ -129,6 +149,7 @@ function updateUI(){
   if(dailyEl){ if(diff < 86400000 && lastDaily!==0){ const h = Math.floor((86400000-diff)/3600000); dailyEl.innerText = "Next daily reward in "+h+"h"; } else { dailyEl.innerText = "Daily reward is ready"; } }
   const spinEl = document.getElementById('spinTimer');
   if(spinEl){ const sdiff = Date.now() - (data.lastSpin||0); if(sdiff < 86400000 && data.lastSpin!==0){ const h=Math.floor((86400000-sdiff)/3600000); spinEl.innerText="Next spin in "+h+"h"; } else { spinEl.innerText="Spin is ready"; } }
+  updateWithdrawInfo();
 }
 function playSound(t){ try{ document.getElementById(t+'Sound')?.play().catch(()=>{}); }catch(e){} }
 function showPage(p, btn){ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active')); document.getElementById(p).classList.add('active'); document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active')); if(btn) btn.classList.add('active'); }
@@ -177,7 +198,7 @@ function doTask(link, reward, name){
   }, 3000);
 }
 
-// PROMOTE - FIXED WALLET OPEN
+// PROMOTE - WALLET OPENS VIA TONKEEPER LINK
 document.getElementById('promoType').onchange = calcPrice;
 document.getElementById('promoUsers').onchange = calcPrice;
 function calcPrice(){
@@ -195,28 +216,16 @@ function createPromo(){
   const type = document.getElementById('promoType').value;
   const users = document.getElementById('promoUsers').value;
   if(!name || !link){ alert("Please fill in the name and link first."); return; }
-
   let custom = getUniquePromos();
   let exists = custom.some(c=> c.name.toLowerCase().trim() === name.toLowerCase() || c.link.toLowerCase().trim() === link.toLowerCase());
   if(exists){ alert("This promotion already exists."); return; }
-
-  // Save promo first
   custom.push({name, link, type, users, price, date: Date.now()});
   localStorage.setItem('moon_custom_promos', JSON.stringify(custom));
   loadTasks();
-
-  // FIXED: Use Tonkeeper web link - works inside Telegram
   const amountNano = Math.floor(price * 1000000000);
   const text = encodeURIComponent(`MOON PROMO ${users} users - ${name}`);
   const tonLink = `https://app.tonkeeper.com/transfer/${OWNER_TON_WALLET}?amount=${amountNano}&text=${text}`;
-
-  // Open wallet
-  if(window.Telegram && window.Telegram.WebApp){
-    window.Telegram.WebApp.openLink(tonLink, {try_instant_view: false});
-  } else {
-    window.open(tonLink, "_blank");
-  }
-
+  if(window.Telegram && window.Telegram.WebApp){ window.Telegram.WebApp.openLink(tonLink, {try_instant_view: false}); } else { window.open(tonLink, "_blank"); }
   setTimeout(()=>{
     alert(`Promotion Created\n\nYour wallet has opened. Please confirm the payment of ${price} GRAM to complete your promotion.\n\nYour task is now visible to users in the Tasks section.`);
     document.getElementById('promoName').value = "";
@@ -258,11 +267,57 @@ function buyItem(cost, type, amount){
   if(data.gsh < cost){ alert("You need "+cost+" MOON. You currently have "+data.gsh); return; }
   data.gsh -= cost; data[type] = Math.round((data[type]+amount)*100000)/100000; playSound('coin'); save(); alert("You purchased "+amount+" "+type.toUpperCase()+" ✅");
 }
-function withdraw(){
-  if(data.gram < 0.01 && data.vanta < 50 && data.atf < 30){ alert("Minimum withdrawal: 0.01 GRAM or 50 VANTA or 30 ATF"); return; }
-  const w = prompt("Enter your TON wallet address (UQ...):");
-  if(w) alert("Withdrawal request received: "+data.gram+" GRAM, "+data.vanta+" VANTA, "+data.atf+" ATF to "+w+". It will be processed within 24 hours after verification. Check payouts: https://t.me/moonempirepayout");
+
+// WITHDRAW - SEPARATE 24H PER COIN, USER TYPES AMOUNT
+function updateWithdrawInfo(){
+  const type = document.getElementById('withdrawType')?.value || 'gram';
+  const bal = data[type] || 0;
+  const min = WITHDRAW_MIN[type];
+  const last = data.lastWithdraw[type] || 0;
+  const diff = Date.now() - last;
+  const infoEl = document.getElementById('withdrawInfo');
+  const timerEl = document.getElementById('withdrawTimer');
+  if(infoEl) infoEl.innerText = `Your ${type.toUpperCase()} Balance: ${bal} | Min: ${min}`;
+  if(timerEl){
+    if(last !== 0 && diff < 86400000){
+      const h = Math.floor((86400000-diff)/3600000);
+      const m = Math.floor(((86400000-diff)%3600000)/60000);
+      timerEl.innerText = `Next ${type.toUpperCase()} withdrawal in ${h}h ${m}m`;
+    } else {
+      timerEl.innerText = `${type.toUpperCase()} withdrawal is available`;
+    }
+  }
 }
+function withdraw(){
+  const type = document.getElementById('withdrawType').value;
+  const amount = parseFloat(document.getElementById('withdrawAmount').value);
+  const wallet = document.getElementById('withdrawWallet').value.trim();
+  const min = WITHDRAW_MIN[type];
+  const bal = data[type] || 0;
+
+  if(!wallet || !wallet.startsWith("UQ")){ alert("Please enter a valid TON wallet address (UQ...)."); return; }
+  if(!amount || isNaN(amount) || amount <= 0){ alert("Please enter the amount you want to withdraw."); return; }
+  if(amount < min){ alert(`Minimum withdrawal for ${type.toUpperCase()} is ${min}.`); return; }
+  if(amount > bal){ alert(`Insufficient balance. You have ${bal} ${type.toUpperCase()}.`); return; }
+
+  // Once per 24 hours - per coin
+  const last = data.lastWithdraw[type] || 0;
+  const diff = Date.now() - last;
+  if(last !== 0 && diff < 86400000){
+    const h = Math.floor((86400000-diff)/3600000);
+    const m = Math.floor(((86400000-diff)%3600000)/60000);
+    alert(`You have already withdrawn ${type.toUpperCase()} in the last 24 hours.\nPlease wait ${h}h ${m}m before withdrawing ${type.toUpperCase()} again.`);
+    return;
+  }
+
+  // Success - deduct balance, save time
+  data[type] = Math.round((bal - amount)*100000)/100000;
+  data.lastWithdraw[type] = Date.now();
+  save();
+  document.getElementById('withdrawAmount').value = "";
+  alert(`Withdrawal request received: ${amount} ${type.toUpperCase()} to ${wallet}.\nIt will be processed within 24 hours after verification.\nCheck payouts: https://t.me/moonempirepayout`);
+}
+
 function copyRef(){ navigator.clipboard.writeText(document.getElementById('refLink').value).then(()=>alert("Link copied. Share it and earn 50 MOON per friend 🌙")); }
 
 const startParam = tg.initDataUnsafe.start_param || "";
