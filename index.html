@@ -47,7 +47,7 @@
   </div>
   <div class="card" style="text-align:center">
     <h3>💸 Payout Channel</h3>
-    <p class="small">All payout proofs dey here</p>
+    <p class="small">All payout proofs are published here</p>
     <button class="gold-btn" onclick="window.open('https://t.me/moonempirepayout','_blank')">📢 Join Payout Channel</button>
   </div>
 </div>
@@ -58,12 +58,12 @@
   <div class="card">
     <h3>📢 Promote Your Bot / Channel</h3>
     <input id="promoName" placeholder="Bot / Channel Name">
-    <input id="promoLink" placeholder="t.me link e.g https://t.me/moonempirepayout">
+    <input id="promoLink" placeholder="Telegram link e.g https://t.me/moonempirepayout">
     <select id="promoType"><option value="bot">Bot / Mini App</option><option value="channel">Channel / Group</option></select>
     <select id="promoUsers"><option value="100">100 users - 0.2 GRAM per 100</option><option value="200">200 users</option><option value="500">500 users</option><option value="1000">1000 users</option></select>
     <div id="promoPrice" class="card">Price: 0.2 GRAM</div>
     <button class="gold-btn" onclick="createPromo()">Pay & Create Promo Task</button>
-    <p class="small">Pay with wallet - Task go appear automatically after payment. No need contact anyone.</p>
+    <p class="small">Your payment will open in your wallet. Your task will be activated automatically after payment.</p>
   </div>
 </div>
 
@@ -87,11 +87,11 @@
     <input id="refLink" readonly>
     <button class="gold-btn" onclick="copyRef()">Copy Link</button>
     <p>Invited: <span id="refCount">0</span> users</p>
-    <small style="color:#aaa">One user can only use one referral link once! You get 50 MOON per friend.</small>
+    <small style="color:#aaa">One user can only use one referral link once. You earn 50 MOON per friend.</small>
   </div>
   <div class="card">
     <h3>🏆 Top Referrers</h3>
-    <p class="small">Invite more to climb leaderboard - Top 10 go get bonus at month end</p>
+    <p class="small">Invite more to climb the leaderboard. Top 10 will receive a bonus at the end of the month.</p>
   </div>
 </div>
 
@@ -106,11 +106,9 @@
 <audio id="spinSound" src="https://assets.mixkit.co/sfx/preview/mixkit-casino-win-notification-1986.mp3"></audio>
 
 <script>
-// ===== CONFIG =====
 const BOT_USERNAME = "moon_empire_bot";
 const OWNER_TON_WALLET = "UQCbXnjJ-vVo3oGtovId9TRs_H-O3CO9irjgazyk8F39_XOu";
 const PAYOUT_CHANNEL = "https://t.me/moonempirepayout";
-// ===================
 
 const tg = window.Telegram.WebApp;
 tg.ready(); tg.expand();
@@ -128,31 +126,41 @@ function updateUI(){
   const lastDaily = data.lastDaily || 0;
   const diff = Date.now() - lastDaily;
   const dailyEl = document.getElementById('dailyTimer');
-  if(dailyEl){ if(diff < 86400000 && lastDaily!==0){ const h = Math.floor((86400000-diff)/3600000); dailyEl.innerText = "Next daily in "+h+"h"; } else { dailyEl.innerText = "Daily ready!"; } }
+  if(dailyEl){ if(diff < 86400000 && lastDaily!==0){ const h = Math.floor((86400000-diff)/3600000); dailyEl.innerText = "Next daily reward in "+h+"h"; } else { dailyEl.innerText = "Daily reward is ready"; } }
   const spinEl = document.getElementById('spinTimer');
-  if(spinEl){ const sdiff = Date.now() - (data.lastSpin||0); if(sdiff < 86400000 && data.lastSpin!==0){ const h=Math.floor((86400000-sdiff)/3600000); spinEl.innerText="Next spin in "+h+"h"; } else { spinEl.innerText="Spin ready!"; } }
+  if(spinEl){ const sdiff = Date.now() - (data.lastSpin||0); if(sdiff < 86400000 && data.lastSpin!==0){ const h=Math.floor((86400000-sdiff)/3600000); spinEl.innerText="Next spin in "+h+"h"; } else { spinEl.innerText="Spin is ready"; } }
 }
 function playSound(t){ try{ document.getElementById(t+'Sound')?.play().catch(()=>{}); }catch(e){} }
 function showPage(p, btn){ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active')); document.getElementById(p).classList.add('active'); document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active')); if(btn) btn.classList.add('active'); }
 
 function claimDaily(){
   const now = Date.now();
-  if(now - (data.lastDaily||0) < 86400000 && data.lastDaily!==0){ alert("Daily already claimed! Come back tomorrow"); return; }
-  data.gsh += 20; data.lastDaily = now; playSound('coin'); save(); alert("+20 MOON Daily! 🌙");
+  if(now - (data.lastDaily||0) < 86400000 && data.lastDaily!==0){ alert("Daily reward already claimed. Please come back tomorrow."); return; }
+  data.gsh += 20; data.lastDaily = now; playSound('coin'); save(); alert("+20 MOON Daily Reward! 🌙");
 }
 
-// TASKS - Default + Custom Promos (Automatic)
+// TASKS
 const defaultTasks = [
   {name:"Join Moon Payout Channel", link:"https://t.me/moonempirepayout", reward:10}
 ];
+function getUniquePromos(){
+  let custom = JSON.parse(localStorage.getItem('moon_custom_promos')||"[]");
+  let seen = new Set();
+  let unique = [];
+  custom.forEach(c=>{
+    let key = (c.name||"").toLowerCase().trim() + "|" + (c.link||"").toLowerCase().trim();
+    if(!seen.has(key)){ seen.add(key); unique.push(c); }
+  });
+  return unique;
+}
 function loadTasks(){
   const list = document.getElementById('taskList');
   list.innerHTML = "";
   let allTasks = [...defaultTasks];
-  // Add custom promos created by users
-  let custom = JSON.parse(localStorage.getItem('moon_custom_promos')||"[]");
-  custom.forEach(c=>{
-    allTasks.push({name:"Join / Open: "+c.name, link:c.link, reward:10, isPromo:true});
+  let custom = getUniquePromos();
+  localStorage.setItem('moon_custom_promos', JSON.stringify(custom));
+  custom.forEach((c)=>{
+    allTasks.push({name:"Join / Open: "+c.name, link:c.link, reward:10});
   });
   allTasks.forEach(t=>{
     const done = (JSON.parse(localStorage.getItem('moon_tasks_done')||"[]")).includes(t.name);
@@ -169,7 +177,7 @@ function doTask(link, reward, name){
   }, 3000);
 }
 
-// PROMOTE LOGIC - AUTOMATIC, NO ADMIN CONTACT
+// PROMOTE - FIXED WALLET OPEN
 document.getElementById('promoType').onchange = calcPrice;
 document.getElementById('promoUsers').onchange = calcPrice;
 function calcPrice(){
@@ -186,32 +194,37 @@ function createPromo(){
   const link = document.getElementById('promoLink').value.trim();
   const type = document.getElementById('promoType').value;
   const users = document.getElementById('promoUsers').value;
-  if(!name || !link){ alert("Fill name and link first"); return; }
+  if(!name || !link){ alert("Please fill in the name and link first."); return; }
 
-  // 1. Save promo - task go appear automatically
-  let custom = JSON.parse(localStorage.getItem('moon_custom_promos')||"[]");
+  let custom = getUniquePromos();
+  let exists = custom.some(c=> c.name.toLowerCase().trim() === name.toLowerCase() || c.link.toLowerCase().trim() === link.toLowerCase());
+  if(exists){ alert("This promotion already exists."); return; }
+
+  // Save promo first
   custom.push({name, link, type, users, price, date: Date.now()});
   localStorage.setItem('moon_custom_promos', JSON.stringify(custom));
   loadTasks();
 
-  // 2. Open wallet automatically with your wallet + amount already filled
+  // FIXED: Use Tonkeeper web link - works inside Telegram
   const amountNano = Math.floor(price * 1000000000);
-  const tonLink = `ton://transfer/${OWNER_TON_WALLET}?amount=${amountNano}&text=MOON PROMO ${users} users - ${name}`;
-  
+  const text = encodeURIComponent(`MOON PROMO ${users} users - ${name}`);
+  const tonLink = `https://app.tonkeeper.com/transfer/${OWNER_TON_WALLET}?amount=${amountNano}&text=${text}`;
+
+  // Open wallet
   if(window.Telegram && window.Telegram.WebApp){
-    window.Telegram.WebApp.openLink(tonLink);
+    window.Telegram.WebApp.openLink(tonLink, {try_instant_view: false});
   } else {
     window.open(tonLink, "_blank");
   }
 
   setTimeout(()=>{
-    alert("✅ Promo Created!\n\nWallet don open - just press SEND for "+price+" GRAM.\n\nYour task don already appear for users for TASKS list. No need contact anyone.");
+    alert(`Promotion Created\n\nYour wallet has opened. Please confirm the payment of ${price} GRAM to complete your promotion.\n\nYour task is now visible to users in the Tasks section.`);
     document.getElementById('promoName').value = "";
     document.getElementById('promoLink').value = "";
   }, 800);
 }
 
-// SPIN - FREE, NO AD
+// SPIN
 const spinPrizes = [
   { label: "1 VANTA", value: 1, type: "vanta", weight: 300 },
   { label: "1 ATF", value: 1, type: "atf", weight: 250 },
@@ -221,9 +234,8 @@ const spinPrizes = [
   { label: "3 ATF", value: 3, type: "atf", weight: 20 },
   { label: "10 VANTA", value: 10, type: "vanta", weight: 10 },
 ];
-
 document.getElementById('spinBtn').onclick = () => {
-  if(Date.now() - (data.lastSpin||0) < 86400000 && data.lastSpin!==0){ alert("Spin once per day!"); return; }
+  if(Date.now() - (data.lastSpin||0) < 86400000 && data.lastSpin!==0){ alert("You can spin once per day."); return; }
   const btn = document.getElementById('spinBtn');
   btn.disabled = true; btn.innerText = "Spinning...";
   playSound('spin');
@@ -234,9 +246,7 @@ document.getElementById('spinBtn').onclick = () => {
     let rand = Math.random()*total;
     let picked = spinPrizes[0];
     for(let p of spinPrizes){ if(rand < p.weight){ picked = p; break; } rand -= p.weight; }
-    if((picked.label === "10 VANTA" || picked.label === "3 ATF") && Math.random() < 0.95){
-      picked = spinPrizes[0];
-    }
+    if((picked.label === "10 VANTA" || picked.label === "3 ATF") && Math.random() < 0.95){ picked = spinPrizes[0]; }
     data[picked.type] = Math.round((data[picked.type] + picked.value)*100000)/100000;
     data.lastSpin = Date.now(); save();
     document.getElementById('spinResult').innerText = "You won: "+picked.label;
@@ -245,25 +255,22 @@ document.getElementById('spinBtn').onclick = () => {
 };
 
 function buyItem(cost, type, amount){
-  if(data.gsh < cost){ alert("Need "+cost+" MOON - you have "+data.gsh); return; }
-  data.gsh -= cost; data[type] = Math.round((data[type]+amount)*100000)/100000; playSound('coin'); save(); alert("Bought "+amount+" "+type.toUpperCase()+" ✅");
+  if(data.gsh < cost){ alert("You need "+cost+" MOON. You currently have "+data.gsh); return; }
+  data.gsh -= cost; data[type] = Math.round((data[type]+amount)*100000)/100000; playSound('coin'); save(); alert("You purchased "+amount+" "+type.toUpperCase()+" ✅");
 }
 function withdraw(){
-  if(data.gram < 0.01 && data.vanta < 50 && data.atf < 30){ alert("Need min: 0.01 GRAM or 50 VANTA or 30 ATF"); return; }
-  const w = prompt("Enter TON wallet (UQ...):");
-  if(w) alert("Withdraw request: "+data.gram+" GRAM, "+data.vanta+" VANTA, "+data.atf+" ATF to "+w+". Will send in 24h after verification. Check payouts: https://t.me/moonempirepayout");
+  if(data.gram < 0.01 && data.vanta < 50 && data.atf < 30){ alert("Minimum withdrawal: 0.01 GRAM or 50 VANTA or 30 ATF"); return; }
+  const w = prompt("Enter your TON wallet address (UQ...):");
+  if(w) alert("Withdrawal request received: "+data.gram+" GRAM, "+data.vanta+" VANTA, "+data.atf+" ATF to "+w+". It will be processed within 24 hours after verification. Check payouts: https://t.me/moonempirepayout");
 }
-function copyRef(){ navigator.clipboard.writeText(document.getElementById('refLink').value).then(()=>alert("Copied! Share and earn 50 MOON per friend 🌙")); }
+function copyRef(){ navigator.clipboard.writeText(document.getElementById('refLink').value).then(()=>alert("Link copied. Share it and earn 50 MOON per friend 🌙")); }
 
 const startParam = tg.initDataUnsafe.start_param || "";
 if(startParam.startsWith("ref_") && !data.usedRef){
   const refId = startParam.replace("ref_","");
   const myId = String(tg.initDataUnsafe.user?.id || "");
-  if(refId !== myId){
-    data.gsh += 50; data.usedRef = true; save(); alert("Referral bonus! +50 MOON (one time only) 🌙");
-  }
+  if(refId !== myId){ data.gsh += 50; data.usedRef = true; save(); alert("Referral bonus: +50 MOON 🌙"); }
 }
-
 updateUI(); loadTasks(); calcPrice();
 setInterval(updateUI, 1000);
 </script>
