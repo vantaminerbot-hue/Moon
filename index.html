@@ -23,15 +23,17 @@
   .spin-wheel{width:200px;height:200px;border-radius:50%;border:5px solid #FFD700;margin:20px auto;background:conic-gradient(#FFD700 0 45deg,#111 45deg 90deg,#FFA500 90deg 135deg,#111 135deg 180deg,#FFD700 180deg 225deg,#111 225deg 270deg,#FFA500 270deg 315deg,#111 315deg 360deg);display:flex;align-items:center;justify-content:center;transition:transform 3s cubic-bezier(.17,.67,.21,.99)}
   input,select{width:100%;padding:12px;border-radius:8px;border:1px solid #FFD700;margin:5px 0;background:#000;color:#fff;box-sizing:border-box}
   .small{font-size:12px;color:#aaa;text-align:center}
+  #debug{background:#ff2222;color:#fff;padding:10px;border-radius:10px;margin:10px 0;font-size:12px;display:none;white-space:pre-wrap}
 </style>
 </head>
 <body>
 <div class="header"><h1>🌙 MOON</h1><p>MOON EMPIRE • EARN • SPIN • REFER</p></div>
+<div id="debug"></div>
 
 <div id="home" class="page active">
   <div class="card">
     <div style="text-align:center;font-size:12px;letter-spacing:2px;color:#aaa">MOON BALANCE</div>
-    <div id="gshBal" class="balance">Loading...</div>
+    <div id="gshBal" class="balance">0 MOON</div>
     <div style="text-align:center;font-size:12px;margin-top:6px">GRAM: <span id="gramBal">0</span> | VANTA: <span id="vantaBal">0</span> | ATF: <span id="atfBal">0</span></div>
   </div>
   <div class="card">
@@ -58,13 +60,12 @@
   </div>
   <div class="card" style="text-align:center">
     <h3>💸 Payout Channel</h3>
-    <p class="small">All payout proofs are published here</p>
     <button class="gold-btn" onclick="window.open('https://t.me/moonempirepayout','_blank')">📢 Join Payout Channel</button>
   </div>
 </div>
 
 <div id="tasks" class="page">
-  <div class="card"><h3>📋 Earn Tasks - 10 MOON each</h3><div id="taskList">Loading tasks...</div><p id="taskEmpty" class="small" style="display:none">No tasks available right now. Check back later.</p></div>
+  <div class="card"><h3>📋 Earn Tasks - 10 MOON each</h3><div id="taskList">Loading tasks...</div></div>
   <div class="card">
     <h3>📢 Promote Your Bot / Channel</h3>
     <input id="promoName" placeholder="Bot / Channel Name">
@@ -95,12 +96,8 @@
     <input id="refLink" readonly>
     <button class="gold-btn" onclick="copyRef()">Copy Link</button>
     <p>Invited: <span id="refCount">0</span> users</p>
-    <p class="small" id="refStatus">Share your link. You earn 50 MOON for each new user who joins with your link.</p>
-    <small style="color:#aaa">One user can only use one referral link once. Only the referrer earns the bonus.</small>
-  </div>
-  <div class="card">
-    <h3>🏆 Top Referrers</h3>
-    <p class="small">Invite more to climb the leaderboard. Top 10 will receive a bonus at the end of the month.</p>
+    <p class="small" id="refStatus">Share your link. You earn 50 MOON for each new user.</p>
+    <small style="color:#aaa">Only the referrer earns the bonus.</small>
   </div>
 </div>
 
@@ -115,10 +112,18 @@
 <audio id="spinSound" src="https://assets.mixkit.co/sfx/preview/mixkit-casino-win-notification-1986.mp3"></audio>
 
 <script>
-// ===== YOUR SUPABASE - ALREADY CONNECTED =====
+function showDebug(msg){
+  const d = document.getElementById('debug');
+  d.style.display = 'block';
+  d.innerText = "DEBUG: " + msg;
+  console.log(msg);
+}
 const SUPABASE_URL = "https://lsviaavezqyvucmqqnbt.supabase.co";
 const SUPABASE_KEY = "sb_publishable_G5Ow7Ky0LdU58sSILmk8ag_x8_TYUa0";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let supabaseClient = null;
+try{
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+}catch(e){ showDebug("Supabase lib failed: " + e.message); }
 
 const BOT_USERNAME = "moon_empire_bot";
 const OWNER_TON_WALLET = "UQCbXnjJ-vVo3oGtovId9TRs_H-O3CO9irjgazyk8F39_XOu";
@@ -131,41 +136,56 @@ tg.ready(); tg.expand();
 const MY_ID = String(tg.initDataUnsafe.user?.id || "123");
 const MY_USERNAME = tg.initDataUnsafe.user?.username || "";
 
-let data = {gsh:0, gram:0, vanta:0, atf:0, lastSpin:0, lastDaily:0, refs:0, usedRef:false, lastWithdraw:{gram:0, vanta:0, atf:0}};
+let data = JSON.parse(localStorage.getItem('moon_data_backup') || '{"gsh":0,"gram":0,"vanta":0,"atf":0,"lastSpin":0,"lastDaily":0,"refs":0,"usedRef":false,"lastWithdraw":{"gram":0,"vanta":0,"atf":0}}');
+if(!data.lastWithdraw) data.lastWithdraw = {gram:0, vanta:0, atf:0};
 
 async function loadUser(){
-  let {data: u} = await supabase.from('users').select('*').eq('telegram_id', MY_ID).single();
-  if(!u){
-    const startParam = tg.initDataUnsafe.start_param || "";
-    let referrer = null;
-    if(startParam.startsWith("ref_")){
-      referrer = startParam.replace("ref_","");
-      if(referrer === MY_ID) referrer = null;
-    }
-    await supabase.from('users').insert({telegram_id: MY_ID, username: MY_USERNAME, referrer_id: referrer, used_ref: !!referrer});
-    // OPTION A: Only referrer gets +50
-    if(referrer){
-      let {data: refUser} = await supabase.from('users').select('*').eq('telegram_id', referrer).single();
-      if(refUser){
-        await supabase.from('users').update({gsh: Number(refUser.gsh)+50, refs: (refUser.refs||0)+1}).eq('telegram_id', referrer);
+  updateUI(); // Show immediately, don't wait for Supabase
+  if(!supabaseClient){ showDebug("Supabase not loaded - using offline mode"); loadTasks(); return; }
+  try{
+    // Use maybeSingle - not single - so new user won't error
+    let {data: u, error} = await supabaseClient.from('users').select('*').eq('telegram_id', MY_ID).maybeSingle();
+    if(error) throw error;
+    if(!u){
+      const startParam = tg.initDataUnsafe.start_param || "";
+      let referrer = null;
+      if(startParam.startsWith("ref_")){ referrer = startParam.replace("ref_",""); if(referrer === MY_ID) referrer = null; }
+      let {error: insErr} = await supabaseClient.from('users').insert({telegram_id: MY_ID, username: MY_USERNAME, referrer_id: referrer, used_ref: !!referrer});
+      if(insErr) throw insErr;
+      if(referrer){
+        let {data: refUser} = await supabaseClient.from('users').select('*').eq('telegram_id', referrer).maybeSingle();
+        if(refUser){
+          await supabaseClient.from('users').update({gsh: Number(refUser.gsh)+50, refs: (refUser.refs||0)+1}).eq('telegram_id', referrer);
+        }
+        setTimeout(()=>alert("Welcome! The person who invited you earned 50 MOON."), 1000);
       }
-      setTimeout(()=>alert("Welcome to Moon Empire! 🌙\n\nYou joined with a referral link.\nThe person who invited you earned 50 MOON."), 1000);
+      // Reload after insert
+      let {data: u2} = await supabaseClient.from('users').select('*').eq('telegram_id', MY_ID).maybeSingle();
+      u = u2 || {telegram_id: MY_ID, gsh:0, gram:0, vanta:0, atf:0, refs:0, used_ref: !!referrer, last_daily:0, last_spin:0, last_withdraw_gram:0, last_withdraw_vanta:0, last_withdraw_atf:0};
     }
-    u = {telegram_id: MY_ID, gsh:0, gram:0, vanta:0, atf:0, refs:0, used_ref: !!referrer, last_daily:0, last_spin:0, last_withdraw_gram:0, last_withdraw_vanta:0, last_withdraw_atf:0};
+    data = {gsh: Number(u.gsh||0), gram: Number(u.gram||0), vanta: Number(u.vanta||0), atf: Number(u.atf||0), lastDaily: Number(u.last_daily||0), lastSpin: Number(u.last_spin||0), refs: u.refs||0, usedRef: !!u.used_ref, lastWithdraw:{gram: Number(u.last_withdraw_gram||0), vanta: Number(u.last_withdraw_vanta||0), atf: Number(u.last_withdraw_atf||0)}};
+    localStorage.setItem('moon_data_backup', JSON.stringify(data));
+    updateUI(); loadTasks();
+  }catch(e){
+    showDebug("Supabase Error: " + (e.message || JSON.stringify(e)) + "\nID: " + MY_ID + "\nCheck: 1) Did you run SQL? 2) RLS policies? 3) Table names?");
+    // Still load tasks from local fallback so buttons work
+    loadTasks();
   }
-  data = {gsh: Number(u.gsh||0), gram: Number(u.gram||0), vanta: Number(u.vanta||0), atf: Number(u.atf||0), lastDaily: Number(u.last_daily||0), lastSpin: Number(u.last_spin||0), refs: u.refs||0, usedRef: !!u.used_ref, lastWithdraw:{gram: Number(u.last_withdraw_gram||0), vanta: Number(u.last_withdraw_vanta||0), atf: Number(u.last_withdraw_atf||0)}};
-  updateUI(); loadTasks();
 }
 
 async function save(){
-  await supabase.from('users').update({
-    gsh: data.gsh, gram: data.gram, vanta: data.vanta, atf: data.atf,
-    last_daily: data.lastDaily, last_spin: data.lastSpin,
-    last_withdraw_gram: data.lastWithdraw.gram,
-    last_withdraw_vanta: data.lastWithdraw.vanta,
-    last_withdraw_atf: data.lastWithdraw.atf,
-    refs: data.refs, used_ref: data.usedRef
-  }).eq('telegram_id', MY_ID);
+  localStorage.setItem('moon_data_backup', JSON.stringify(data));
+  if(!supabaseClient) { updateUI(); return; }
+  try{
+    await supabaseClient.from('users').update({
+      gsh: data.gsh, gram: data.gram, vanta: data.vanta, atf: data.atf,
+      last_daily: data.lastDaily, last_spin: data.lastSpin,
+      last_withdraw_gram: data.lastWithdraw.gram,
+      last_withdraw_vanta: data.lastWithdraw.vanta,
+      last_withdraw_atf: data.lastWithdraw.atf,
+      refs: data.refs, used_ref: data.usedRef
+    }).eq('telegram_id', MY_ID);
+  }catch(e){ console.log("save error", e); }
   updateUI();
 }
 
@@ -177,10 +197,7 @@ function updateUI(){
   document.getElementById('refCount').innerText = data.refs;
   document.getElementById('refLink').value = "https://t.me/" + BOT_USERNAME + "?start=ref_" + MY_ID;
   const refStatus = document.getElementById('refStatus');
-  if(refStatus){
-    if(data.usedRef){ refStatus.innerText = "You joined with a referral link. The person who invited you earned 50 MOON."; }
-    else { refStatus.innerText = "Share your link. You earn 50 MOON for each new user who joins with your link."; }
-  }
+  if(refStatus){ if(data.usedRef){ refStatus.innerText = "You joined with a referral link. The person who invited you earned 50 MOON."; } else { refStatus.innerText = "Share your link. You earn 50 MOON for each new user."; } }
   const diff = Date.now() - (data.lastDaily||0);
   const dailyEl = document.getElementById('dailyTimer');
   if(dailyEl){ if(diff < 86400000 && data.lastDaily!==0){ const h = Math.floor((86400000-diff)/3600000); dailyEl.innerText = "Next daily reward in "+h+"h"; } else { dailyEl.innerText = "Daily reward is ready"; } }
@@ -195,67 +212,76 @@ async function claimDaily(){
   if(now - (data.lastDaily||0) < 86400000 && data.lastDaily!==0){ alert("Daily reward already claimed. Please come back tomorrow."); return; }
   data.gsh += 20; data.lastDaily = now; playSound('coin'); await save(); alert("+20 MOON Daily Reward! 🌙");
 }
-
-// ===== TASKS + PROMO - LIVE COUNTING =====
 async function loadTasks(){
   const list = document.getElementById('taskList');
   if(!list) return;
-  let {data: promos} = await supabase.from('promos').select('*').order('created_at',{ascending:false});
-  let {data: myDone} = await supabase.from('tasks_done').select('task_name').eq('user_id', MY_ID);
-  let doneNames = (myDone||[]).map(d=>d.task_name);
-  let {data: myPromoDone} = await supabase.from('promo_done').select('promo_id').eq('user_id', MY_ID);
-  let myPromoIds = (myPromoDone||[]).map(d=>d.promo_id);
-  let html = "";
-  const defaultTasks = [
-    {name:"Join Moon Empire Channel", link: MOON_CHANNEL},
-    {name:"Join Moon Payout Channel", link: PAYOUT_CHANNEL}
-  ];
-  defaultTasks.forEach(t=>{
-    const done = doneNames.includes(t.name);
-    html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>${t.name}</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" ${done?'disabled':''} onclick="doTask('${t.link}',10,'${t.name}', false)">${done?'✅ Done':'10 MOON'}</button></div>`;
-  });
-  (promos||[]).forEach(c=>{
-    if(c.done_count >= c.max_users) return;
-    const isCreator = String(c.creator_id) === MY_ID;
-    const alreadyDone = myPromoIds.includes(c.id);
-    const remaining = c.max_users - c.done_count;
-    let btn = "";
-    if(isCreator) btn = `<button class="gold-btn" style="width:auto;padding:8px 12px;margin:0;background:#555" disabled>Your Promo (${c.done_count}/${c.max_users})</button> <button onclick="deletePromo(${c.id})" style="background:#ff4444;border:none;color:#fff;padding:5px 9px;border-radius:50%;cursor:pointer">X</button>`;
-    else if(alreadyDone) btn = `<button disabled class="gold-btn" style="width:auto;padding:8px 15px;margin:0">✅ Done</button>`;
-    else btn = `<button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${c.link}',10,'promo_${c.id}', true, ${c.id})">10 MOON</button>`;
-    html += `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><span>Join / Open: ${c.name}</span><div>${btn}</div></div><div class="small" style="text-align:left;margin-top:6px">${c.done_count} / ${c.max_users} users • ${remaining} slots left</div></div>`;
-  });
-  list.innerHTML = html;
-  const empty = document.getElementById('taskEmpty');
-  if(empty) empty.style.display = "none";
+  try{
+    if(!supabaseClient) throw new Error("no supabase");
+    let {data: promos} = await supabaseClient.from('promos').select('*').order('created_at',{ascending:false});
+    let {data: myDone} = await supabaseClient.from('tasks_done').select('task_name').eq('user_id', MY_ID);
+    let doneNames = (myDone||[]).map(d=>d.task_name);
+    let {data: myPromoDone} = await supabaseClient.from('promo_done').select('promo_id').eq('user_id', MY_ID);
+    let myPromoIds = (myPromoDone||[]).map(d=>d.promo_id);
+    let html = "";
+    const defaultTasks = [
+      {name:"Join Moon Empire Channel", link: MOON_CHANNEL},
+      {name:"Join Moon Payout Channel", link: PAYOUT_CHANNEL}
+    ];
+    defaultTasks.forEach(t=>{
+      const done = doneNames.includes(t.name);
+      html += `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>${t.name}</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" ${done?'disabled':''} onclick="doTask('${t.link}',10,'${t.name}', false)">${done?'✅ Done':'10 MOON'}</button></div>`;
+    });
+    (promos||[]).forEach(c=>{
+      if(c.done_count >= c.max_users) return;
+      const isCreator = String(c.creator_id) === MY_ID;
+      const alreadyDone = myPromoIds.includes(c.id);
+      const remaining = c.max_users - c.done_count;
+      let btn = "";
+      if(isCreator) btn = `<button class="gold-btn" style="width:auto;padding:8px 12px;margin:0;background:#555" disabled>Your Promo (${c.done_count}/${c.max_users})</button> <button onclick="deletePromo(${c.id})" style="background:#ff4444;border:none;color:#fff;padding:5px 9px;border-radius:50%;cursor:pointer">X</button>`;
+      else if(alreadyDone) btn = `<button disabled class="gold-btn" style="width:auto;padding:8px 15px;margin:0">✅ Done</button>`;
+      else btn = `<button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${c.link}',10,'promo_${c.id}', true, ${c.id})">10 MOON</button>`;
+      html += `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><span>Join / Open: ${c.name}</span><div>${btn}</div></div><div class="small" style="text-align:left;margin-top:6px">${c.done_count} / ${c.max_users} users • ${remaining} slots left</div></div>`;
+    });
+    list.innerHTML = html;
+  }catch(e){
+    // Fallback: show default tasks with localStorage
+    let doneLocal = JSON.parse(localStorage.getItem('moon_tasks_done')||"[]");
+    list.innerHTML = `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>Join Moon Empire Channel</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${MOON_CHANNEL}',10,'Join Moon Empire Channel', false)">10 MOON</button></div><div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>Join Moon Payout Channel</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${PAYOUT_CHANNEL}',10,'Join Moon Payout Channel', false)">10 MOON</button></div><div class="small">Promo tasks offline - Supabase error: ${e.message}</div>`;
+  }
 }
 async function deletePromo(id){
   if(!confirm("Delete this promo?")) return;
-  await supabase.from('promos').delete().eq('id', id).eq('creator_id', MY_ID);
+  if(supabaseClient) await supabaseClient.from('promos').delete().eq('id', id).eq('creator_id', MY_ID);
   loadTasks();
 }
 async function doTask(link, reward, name, isPromo, promoId){
-  if(isPromo){
-    let {data: p} = await supabase.from('promos').select('*').eq('id', promoId).single();
-    if(!p) return;
-    if(String(p.creator_id) === MY_ID){ alert("You cannot complete your own promotion."); return; }
-    if(p.done_count >= p.max_users){ alert("This promotion is finished."); loadTasks(); return; }
+  if(isPromo && supabaseClient){
+    let {data: p} = await supabaseClient.from('promos').select('*').eq('id', promoId).maybeSingle();
+    if(p){
+      if(String(p.creator_id) === MY_ID){ alert("You cannot complete your own promotion."); return; }
+      if(p.done_count >= p.max_users){ alert("This promotion is finished."); loadTasks(); return; }
+    }
   }
   window.open(link, "_blank");
   setTimeout(async ()=>{
-    if(isPromo){
-      let {data: exists} = await supabase.from('promo_done').select('*').eq('promo_id', promoId).eq('user_id', MY_ID).single();
-      if(exists){ alert("You already did this task."); return; }
-      await supabase.from('promo_done').insert({promo_id: promoId, user_id: MY_ID});
-      let {data: p} = await supabase.from('promos').select('*').eq('id', promoId).single();
-      await supabase.from('promos').update({done_count: p.done_count + 1}).eq('id', promoId);
-      if(p.done_count + 1 >= p.max_users) alert("This promotion is now completed.");
-    } else {
-      let {data: exists} = await supabase.from('tasks_done').select('*').eq('user_id', MY_ID).eq('task_name', name).single();
-      if(exists) return;
-      await supabase.from('tasks_done').insert({user_id: MY_ID, task_name: name});
-    }
-    data.gsh += reward; await save(); loadTasks(); alert("+"+reward+" MOON!");
+    try{
+      if(isPromo && supabaseClient){
+        let {data: exists} = await supabaseClient.from('promo_done').select('*').eq('promo_id', promoId).eq('user_id', MY_ID).maybeSingle();
+        if(exists){ alert("You already did this task."); return; }
+        await supabaseClient.from('promo_done').insert({promo_id: promoId, user_id: MY_ID});
+        let {data: p} = await supabaseClient.from('promos').select('*').eq('id', promoId).maybeSingle();
+        if(p) await supabaseClient.from('promos').update({done_count: p.done_count + 1}).eq('id', promoId);
+      } else if(!isPromo && supabaseClient){
+        let {data: exists} = await supabaseClient.from('tasks_done').select('*').eq('user_id', MY_ID).eq('task_name', name).maybeSingle();
+        if(!exists) await supabaseClient.from('tasks_done').insert({user_id: MY_ID, task_name: name});
+        else { alert("You already did this task."); return; }
+      } else {
+        let done = JSON.parse(localStorage.getItem('moon_tasks_done')||"[]");
+        if(done.includes(name)) return;
+        done.push(name); localStorage.setItem('moon_tasks_done', JSON.stringify(done));
+      }
+      data.gsh += reward; await save(); loadTasks(); alert("+"+reward+" MOON!");
+    }catch(e){ showDebug("Task error: " + e.message); }
   }, 3000);
 }
 document.getElementById('promoType').onchange = calcPrice;
@@ -272,13 +298,13 @@ async function createPromo(){
   const type = document.getElementById('promoType').value;
   const users = parseInt(document.getElementById('promoUsers').value);
   if(!name || !link){ alert("Please fill in name and link."); return; }
-  await supabase.from('promos').insert({creator_id: MY_ID, name, link, type, max_users: users, done_count: 0, price});
+  if(supabaseClient) await supabaseClient.from('promos').insert({creator_id: MY_ID, name, link, type, max_users: users, done_count: 0, price});
   loadTasks();
   const amountNano = Math.floor(price * 1000000000);
   const text = encodeURIComponent(`MOON PROMO ${users} users - ${name}`);
   const tonLink = `https://app.tonkeeper.com/transfer/${OWNER_TON_WALLET}?amount=${amountNano}&text=${text}`;
   window.Telegram.WebApp.openLink(tonLink, {try_instant_view: false});
-  alert(`Promotion Created! Pay ${price} GRAM. It will disappear automatically after ${users} users.`);
+  alert(`Promotion Created! Pay ${price} GRAM.`);
   document.getElementById('promoName').value = ""; document.getElementById('promoLink').value = "";
 }
 const spinPrizes = [
@@ -319,9 +345,9 @@ async function withdraw(){
   data[type] = Math.round((bal-amount)*100000)/100000;
   data.lastWithdraw[type] = Date.now();
   await save();
-  await supabase.from('withdraws').insert({user_id: MY_ID, coin: type, amount, wallet, status: 'pending'});
+  if(supabaseClient) await supabaseClient.from('withdraws').insert({user_id: MY_ID, coin: type, amount, wallet, status: 'pending'});
   document.getElementById('withdrawAmount').value = "";
-  alert(`Withdrawal request sent: ${amount} ${type.toUpperCase()} to ${wallet}. Check payout channel.`);
+  alert(`Withdrawal request sent: ${amount} ${type.toUpperCase()} to ${wallet}.`);
 }
 function copyRef(){ navigator.clipboard.writeText(document.getElementById('refLink').value).then(()=>alert("Link copied. Share it and earn 50 MOON per friend 🌙")); }
 
