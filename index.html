@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Moon - Moon Empire</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 <style>
   body{margin:0;background:linear-gradient(135deg,#0a0a1a,#1a1a3a,#0a0a1a);color:#fff;font-family:Arial;min-height:100vh}
   .header{text-align:center;padding:15px 0 5px}
@@ -37,8 +36,6 @@
     <div style="text-align:center;font-size:12px;margin-top:6px">GRAM: <span id="gramBal">0</span> | VANTA: <span id="vantaBal">0</span> | ATF: <span id="atfBal">0</span></div>
   </div>
   <div class="card">
-    <button class="gold-btn" id="watchBtn">📺 Watch Ad + Earn MOON</button>
-    <div style="text-align:center;font-size:12px"><span id="adsLeft">50</span>/50 ads today • 2-4 MOON per ad</div>
     <button class="gold-btn" onclick="claimDaily()">💰 Claim Daily 20 MOON</button>
     <div id="dailyTimer" class="small"></div>
   </div>
@@ -74,10 +71,10 @@
 <!-- SPIN -->
 <div id="spin" class="page">
   <div class="card" style="text-align:center">
-    <h3>🎰 Daily Spin - Watch Ad to Spin</h3>
+    <h3>🎰 Daily Spin - Free Spin</h3>
     <div id="wheel" class="spin-wheel"><span style="background:#000;color:#FFD700;padding:12px 16px;border-radius:50%;font-weight:900">SPIN</span></div>
-    <button class="gold-btn" id="spinBtn">🎯 Watch Ad & Spin (1 per day)</button>
-    <p class="small">Win: 1 VANTA, 1 ATF, 0.0001 GRAM, 3 VANTA, 3 ATF, 0.00001 GRAM, 10 VANTA</p>
+    <button class="gold-btn" id="spinBtn">🎯 Spin Now (1 per day)</button>
+    <p class="small">Spin daily to unlock surprise rewards</p>
     <div id="spinResult" style="color:#FFD700;font-weight:bold;margin-top:8px"></div>
     <div id="spinTimer" class="small"></div>
   </div>
@@ -111,7 +108,6 @@
 
 <script>
 // ===== CONFIG - CHANGE THESE 3 ONLY =====
-const ADGRAM_BLOCK_ID = "YOUR_BLOCK_ID";
 const BOT_USERNAME = "moon_empire_bot";
 const ADMIN_USERNAME = "@YourAdmin";
 const OWNER_TON_WALLET = "YOUR_TON_WALLET";
@@ -120,10 +116,7 @@ const PAYOUT_CHANNEL = "https://t.me/moonempirepayout";
 
 const tg = window.Telegram.WebApp;
 tg.ready(); tg.expand();
-let data = JSON.parse(localStorage.getItem('moon_data') || '{"gsh":0,"gram":0,"vanta":0,"atf":0,"ads":0,"adsDate":"","lastSpin":0,"lastDaily":0,"refs":0,"usedRef":false}');
-
-const today = new Date().toDateString();
-if(data.adsDate !== today){ data.ads = 0; data.adsDate = today; localStorage.setItem('moon_data', JSON.stringify(data)); }
+let data = JSON.parse(localStorage.getItem('moon_data') || '{"gsh":0,"gram":0,"vanta":0,"atf":0,"lastSpin":0,"lastDaily":0,"refs":0,"usedRef":false}');
 
 function save(){ localStorage.setItem('moon_data', JSON.stringify(data)); updateUI(); }
 function updateUI(){
@@ -131,7 +124,6 @@ function updateUI(){
   document.getElementById('gramBal').innerText = data.gram;
   document.getElementById('vantaBal').innerText = data.vanta;
   document.getElementById('atfBal').innerText = data.atf;
-  document.getElementById('adsLeft').innerText = (50 - data.ads);
   document.getElementById('refCount').innerText = data.refs;
   const uid = tg.initDataUnsafe.user?.id || "123";
   document.getElementById('refLink').value = "https://t.me/" + BOT_USERNAME + "?start=ref_" + uid;
@@ -145,33 +137,13 @@ function updateUI(){
 function playSound(t){ try{ document.getElementById(t+'Sound')?.play().catch(()=>{}); }catch(e){} }
 function showPage(p, btn){ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active')); document.getElementById(p).classList.add('active'); document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active')); if(btn) btn.classList.add('active'); }
 
-let AdController = null;
-try{ if(window.Adsgram){ AdController = window.Adsgram.init({ blockId: ADGRAM_BLOCK_ID }); } }catch(e){ console.log("Adsgram init", e); }
-
 function claimDaily(){
   const now = Date.now();
   if(now - (data.lastDaily||0) < 86400000 && data.lastDaily!==0){ alert("Daily already claimed! Come back tomorrow"); return; }
   data.gsh += 20; data.lastDaily = now; playSound('coin'); save(); alert("+20 MOON Daily! 🌙");
 }
 
-document.getElementById('watchBtn').onclick = async () => {
-  if(data.ads >= 50){ alert("50 ads done today!"); return; }
-  const btn = document.getElementById('watchBtn');
-  btn.disabled = true; btn.innerText = "Loading Ad...";
-  function reward(){
-    let earn = 2 + Math.floor(Math.random()*3);
-    data.gsh += earn; data.ads += 1; playSound('coin'); save(); alert("+"+earn+" MOON! 🌙");
-    btn.disabled = false; btn.innerText = "📺 Watch Ad + Earn MOON";
-  }
-  try{
-    if(!AdController) throw new Error("no adsgram");
-    const res = await AdController.show();
-    if(res && res.done){ reward(); }
-    else { btn.disabled=false; btn.innerText="📺 Watch Ad + Earn MOON"; if(res && res.error) alert("Adsgram: "+res.error); }
-  }catch(e){ console.log(e); btn.disabled=false; btn.innerText="📺 Watch Ad + Earn MOON"; alert("Adsgram not loaded - check Block ID for Moon"); }
-};
-
-// TASKS - UPDATED: Vanta removed, Payout Channel added
+// TASKS
 const defaultTasks = [
   {name:"Join Moon Payout Channel", link:"https://t.me/moonempirepayout", reward:10},
   {name:"Join Moon Empire Payout", link:"https://t.me/moonempirepayout", reward:10}
@@ -213,7 +185,7 @@ function createPromo(){
   alert("To promote, send "+price+" GRAM to "+OWNER_TON_WALLET+" and contact "+ADMIN_USERNAME+" with screenshot + link. Task will be added for "+document.getElementById('promoUsers').value+" users.");
 }
 
-// SPIN - NEW PRIZES + BLOCK FOR 10 VANTA & 3 ATF
+// SPIN - FREE, NO AD
 const spinPrizes = [
   { label: "1 VANTA", value: 1, type: "vanta", weight: 300 },
   { label: "1 ATF", value: 1, type: "atf", weight: 250 },
@@ -224,11 +196,10 @@ const spinPrizes = [
   { label: "10 VANTA", value: 10, type: "vanta", weight: 10 },
 ];
 
-document.getElementById('spinBtn').onclick = async () => {
+document.getElementById('spinBtn').onclick = () => {
   if(Date.now() - (data.lastSpin||0) < 86400000 && data.lastSpin!==0){ alert("Spin once per day!"); return; }
   const btn = document.getElementById('spinBtn');
-  btn.disabled = true; btn.innerText = "Loading Ad...";
-  try{ if(AdController){ const r = await AdController.show(); if(!r || !r.done){ btn.disabled=false; btn.innerText="🎯 Watch Ad & Spin (1 per day)"; return; } } }catch(e){ btn.disabled=false; btn.innerText="🎯 Watch Ad & Spin (1 per day)"; return; }
+  btn.disabled = true; btn.innerText = "Spinning...";
   playSound('spin');
   const wheel = document.getElementById('wheel');
   wheel.style.transform = "rotate("+(720+Math.random()*720)+"deg)";
@@ -240,13 +211,13 @@ document.getElementById('spinBtn').onclick = async () => {
 
     // BLOCK: Dem must not reach 10 VANTA & 3 ATF
     if((picked.label === "10 VANTA" || picked.label === "3 ATF") && Math.random() < 0.95){
-      picked = spinPrizes[0]; // Change to 1 VANTA
+      picked = spinPrizes[0];
     }
 
     data[picked.type] = Math.round((data[picked.type] + picked.value)*100000)/100000;
     data.lastSpin = Date.now(); save();
     document.getElementById('spinResult').innerText = "You won: "+picked.label;
-    btn.disabled = false; btn.innerText = "🎯 Watch Ad & Spin (1 per day)";
+    btn.disabled = false; btn.innerText = "🎯 Spin Now (1 per day)";
   }, 3000);
 };
 
