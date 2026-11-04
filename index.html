@@ -60,7 +60,8 @@
   </div>
   <div class="card" style="text-align:center">
     <h3>💸 Payout Channel</h3>
-    <button class="gold-btn" onclick="window.open('https://t.me/moonempirepayout','_blank')">📢 Join Payout Channel</button>
+    <p class="small">All payout proofs are published here</p>
+    <button class="gold-btn" onclick="openLink('https://t.me/moonempirepayout')">📢 Join Payout Channel</button>
   </div>
 </div>
 
@@ -69,7 +70,7 @@
   <div class="card">
     <h3>📢 Promote Your Bot / Channel</h3>
     <input id="promoName" placeholder="Bot / Channel Name">
-    <input id="promoLink" placeholder="Telegram link e.g https://t.me/moonempirepayout">
+    <input id="promoLink" placeholder="Telegram link e.g https://t.me/mo_on_em_pi_re">
     <select id="promoType"><option value="bot">Bot / Mini App</option><option value="channel">Channel / Group</option></select>
     <select id="promoUsers"><option value="100">100 users - 0.2 GRAM per 100</option><option value="200">200 users</option><option value="500">500 users</option><option value="1000">1000 users</option></select>
     <div id="promoPrice" class="card">Price: 0.2 GRAM</div>
@@ -99,6 +100,10 @@
     <p class="small" id="refStatus">Share your link. You earn 50 MOON for each new user.</p>
     <small style="color:#aaa">Only the referrer earns the bonus.</small>
   </div>
+  <div class="card">
+    <h3>🏆 Top Referrers</h3>
+    <p class="small">Invite more to climb the leaderboard. Top 10 will receive a bonus at the end of the month.</p>
+  </div>
 </div>
 
 <div class="nav">
@@ -116,19 +121,24 @@ function showDebug(msg){
   const d = document.getElementById('debug');
   d.style.display = 'block';
   d.innerText = "DEBUG: " + msg;
-  console.log(msg);
+}
+function openLink(url){
+  if(window.Telegram && window.Telegram.WebApp){
+    try{ window.Telegram.WebApp.openTelegramLink(url); return; }catch(e){}
+    try{ window.Telegram.WebApp.openLink(url); return; }catch(e){}
+  }
+  window.open(url, "_blank");
 }
 const SUPABASE_URL = "https://lsviaavezqyvucmqqnbt.supabase.co";
 const SUPABASE_KEY = "sb_publishable_G5Ow7Ky0LdU58sSILmk8ag_x8_TYUa0";
 let supabaseClient = null;
-try{
-  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-}catch(e){ showDebug("Supabase lib failed: " + e.message); }
+try{ supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); }catch(e){ showDebug("Supabase lib failed: " + e.message); }
 
 const BOT_USERNAME = "moon_empire_bot";
 const OWNER_TON_WALLET = "UQCbXnjJ-vVo3oGtovId9TRs_H-O3CO9irjgazyk8F39_XOu";
+// CORRECT LINKS
 const PAYOUT_CHANNEL = "https://t.me/moonempirepayout";
-const MOON_CHANNEL = "https://t.me/moonempire";
+const MOON_CHANNEL = "https://t.me/mo_on_em_pi_re";
 const WITHDRAW_MIN = { gram: 0.1, vanta: 50, atf: 65 };
 
 const tg = window.Telegram.WebApp;
@@ -140,10 +150,9 @@ let data = JSON.parse(localStorage.getItem('moon_data_backup') || '{"gsh":0,"gra
 if(!data.lastWithdraw) data.lastWithdraw = {gram:0, vanta:0, atf:0};
 
 async function loadUser(){
-  updateUI(); // Show immediately, don't wait for Supabase
+  updateUI();
   if(!supabaseClient){ showDebug("Supabase not loaded - using offline mode"); loadTasks(); return; }
   try{
-    // Use maybeSingle - not single - so new user won't error
     let {data: u, error} = await supabaseClient.from('users').select('*').eq('telegram_id', MY_ID).maybeSingle();
     if(error) throw error;
     if(!u){
@@ -154,12 +163,9 @@ async function loadUser(){
       if(insErr) throw insErr;
       if(referrer){
         let {data: refUser} = await supabaseClient.from('users').select('*').eq('telegram_id', referrer).maybeSingle();
-        if(refUser){
-          await supabaseClient.from('users').update({gsh: Number(refUser.gsh)+50, refs: (refUser.refs||0)+1}).eq('telegram_id', referrer);
-        }
+        if(refUser){ await supabaseClient.from('users').update({gsh: Number(refUser.gsh)+50, refs: (refUser.refs||0)+1}).eq('telegram_id', referrer); }
         setTimeout(()=>alert("Welcome! The person who invited you earned 50 MOON."), 1000);
       }
-      // Reload after insert
       let {data: u2} = await supabaseClient.from('users').select('*').eq('telegram_id', MY_ID).maybeSingle();
       u = u2 || {telegram_id: MY_ID, gsh:0, gram:0, vanta:0, atf:0, refs:0, used_ref: !!referrer, last_daily:0, last_spin:0, last_withdraw_gram:0, last_withdraw_vanta:0, last_withdraw_atf:0};
     }
@@ -167,15 +173,13 @@ async function loadUser(){
     localStorage.setItem('moon_data_backup', JSON.stringify(data));
     updateUI(); loadTasks();
   }catch(e){
-    showDebug("Supabase Error: " + (e.message || JSON.stringify(e)) + "\nID: " + MY_ID + "\nCheck: 1) Did you run SQL? 2) RLS policies? 3) Table names?");
-    // Still load tasks from local fallback so buttons work
+    showDebug("Supabase Error: " + (e.message || JSON.stringify(e)) + "\nID: " + MY_ID);
     loadTasks();
   }
 }
-
 async function save(){
   localStorage.setItem('moon_data_backup', JSON.stringify(data));
-  if(!supabaseClient) { updateUI(); return; }
+  if(!supabaseClient){ updateUI(); return; }
   try{
     await supabaseClient.from('users').update({
       gsh: data.gsh, gram: data.gram, vanta: data.vanta, atf: data.atf,
@@ -188,7 +192,6 @@ async function save(){
   }catch(e){ console.log("save error", e); }
   updateUI();
 }
-
 function updateUI(){
   document.getElementById('gshBal').innerText = data.gsh + " MOON";
   document.getElementById('gramBal').innerText = data.gram;
@@ -244,9 +247,8 @@ async function loadTasks(){
     });
     list.innerHTML = html;
   }catch(e){
-    // Fallback: show default tasks with localStorage
     let doneLocal = JSON.parse(localStorage.getItem('moon_tasks_done')||"[]");
-    list.innerHTML = `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>Join Moon Empire Channel</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${MOON_CHANNEL}',10,'Join Moon Empire Channel', false)">10 MOON</button></div><div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>Join Moon Payout Channel</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${PAYOUT_CHANNEL}',10,'Join Moon Payout Channel', false)">10 MOON</button></div><div class="small">Promo tasks offline - Supabase error: ${e.message}</div>`;
+    list.innerHTML = `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>Join Moon Empire Channel</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${MOON_CHANNEL}',10,'Join Moon Empire Channel', false)">10 MOON</button></div><div class="card" style="display:flex;justify-content:space-between;align-items:center"><span>Join Moon Payout Channel</span><button class="gold-btn" style="width:auto;padding:8px 15px;margin:0" onclick="doTask('${PAYOUT_CHANNEL}',10,'Join Moon Payout Channel', false)">10 MOON</button></div><div class="small">Promo tasks offline - ${e.message}</div>`;
   }
 }
 async function deletePromo(id){
@@ -262,7 +264,7 @@ async function doTask(link, reward, name, isPromo, promoId){
       if(p.done_count >= p.max_users){ alert("This promotion is finished."); loadTasks(); return; }
     }
   }
-  window.open(link, "_blank");
+  openLink(link);
   setTimeout(async ()=>{
     try{
       if(isPromo && supabaseClient){
